@@ -1,0 +1,12 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.db
+build/
+.dart_tool/
+.idea/
+# Play Store signing keys: never commit these
+*.jks
+*.keystore
+key.properties

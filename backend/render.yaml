@@ -1,0 +1,18 @@
+# Optional: "Blueprint" for Render. Or create the service by hand (see README).
+services:
+  - type: web
+    name: daily-expense-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENV
+        value: prod
+      - key: DATABASE_URL
+        sync: false        # paste the Supabase Session-pooler URL in the dashboard
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PIN_PEPPER
+        generateValue: true
