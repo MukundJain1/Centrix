@@ -1,11 +1,12 @@
 """Database tables. supabase/schema.sql must stay in sync with this file."""
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -37,11 +38,19 @@ class User(Base):
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
-    __table_args__ = (CheckConstraint("payday between 1 and 31", name="payday_range"),)
+    __table_args__ = (
+        CheckConstraint("payday between 1 and 31", name="payday_range"),
+        CheckConstraint("age between 1 and 999", name="age_range"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
+    full_name: Mapped[str | None] = mapped_column(String(80))
+    age: Mapped[int | None] = mapped_column(SmallInteger)
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    gender: Mapped[str | None] = mapped_column(String(32))
+    occupation: Mapped[str | None] = mapped_column(String(60))
     currency: Mapped[str] = mapped_column(String(8), default="₹")
     monthly_surplus: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     daily_limit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))

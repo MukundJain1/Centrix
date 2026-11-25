@@ -88,4 +88,16 @@ class BudgetStorage {
       return null;
     }
   }
+
+  /// Updates only the cached baseline snapshot and currency without
+  /// overwriting an existing daily limit or payday.
+  static Future<void> saveBaseline(BaselineSnapshot baseline) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_baselineKey, baseline.encode());
+      await prefs.setString(_currencyKey, baseline.currency);
+    } catch (_) {
+      // Non-critical cache write.
+    }
+  }
 }

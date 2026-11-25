@@ -13,6 +13,9 @@ class AuthRepository {
 
   final ApiClient _api = ApiClient.instance;
 
+  /// In-memory reactive user cache so Dashboard & Profile stay in sync.
+  final ValueNotifier<MeModel?> currentUser = ValueNotifier<MeModel?>(null);
+
   String get _deviceLabel => defaultTargetPlatform.name; // "android", "iOS" ...
 
   Map<String, dynamic> _phoneBody(Country country, String phone) => {
@@ -73,18 +76,51 @@ class AuthRepository {
 
   Future<MeModel> me() async {
     final body = await _api.send('GET', '/v1/auth/me') as Map<String, dynamic>;
-    return MeModel.fromJson(body);
+    final user = MeModel.fromJson(body);
+    currentUser.value = user;
+    return user;
   }
 
+  Future<MeModel> updateProfile({
+    String? fullName,
+    int? age,
+    DateTime? dateOfBirth,
+    String? gender,
+    String? occupation,
+  }) async {
+    String? formattedDob;
+    if (dateOfBirth != null) {
+      final y = dateOfBirth.year.toString().padLeft(4, '0');
+      final m = dateOfBirth.month.toString().padLeft(2, '0');
+      final d = dateOfBirth.day.toString().padLeft(2, '0');
+      formattedDob = '$y-$m-$d';
+    }
+
+    final body = await _api.send(
+      'PUT',
+      '/v1/auth/me',
+      data: {
+        'full_name': fullName,
+        'age': age,
+        'date_of_birth': formattedDob,
+        'gender': gender,
+        'occupation': occupation,
+      },
+    ) as Map<String, dynamic>;
+
+    final user = MeModel.fromJson(body);
+    currentUser.value = user;
+    return user;
+  }
+  
   Future<void> logout() async {
     final refresh = await TokenStore.instance.refresh();
     if (refresh != null) {
       try {
         await _api.send('POST', '/v1/auth/logout', data: {'refresh_token': refresh}, auth: false);
-      } catch (_) {
-        // Offline? Still sign out on this phone.
-      }
+      } catch (_) {}
     }
+    currentUser.value = null;
     await TokenStore.instance.clear();
   }
 
@@ -93,6 +129,8 @@ class AuthRepository {
       access: body['access_token'] as String,
       refresh: body['refresh_token'] as String,
     );
-    return MeModel.fromJson(body['user'] as Map<String, dynamic>);
+    final user = MeModel.fromJson(body['user'] as Map<String, dynamic>);
+    currentUser.value = user;
+    return user;
   }
 }

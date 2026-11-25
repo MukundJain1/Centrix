@@ -22,6 +22,7 @@ from ..schemas import (
     OtpSentOut,
     OtpVerifyIn,
     PhoneIn,
+    ProfileUpdateIn,
     RefreshIn,
     RegisterIn,
     RegistrationTokenOut,
@@ -46,6 +47,13 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
 def _seconds_left(until) -> int:
     return max(1, math.ceil((as_utc(until) - utcnow()).total_seconds()))
+
+
+def _clean_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed if trimmed else None
 
 
 # ------------------------------------------------------------ OTP: send
@@ -281,4 +289,21 @@ async def logout(body: RefreshIn, session: AsyncSession = Depends(get_session)):
 @router.get("/me", response_model=MeOut)
 async def me(user: User = Depends(current_user), profile: UserProfile = Depends(current_profile)):
     """Who am I, and which setup steps are left?"""
+    return build_me(user, profile)
+
+
+@router.put("/me", response_model=MeOut)
+async def update_me(
+    body: ProfileUpdateIn,
+    user: User = Depends(current_user),
+    profile: UserProfile = Depends(current_profile),
+    session: AsyncSession = Depends(get_session),
+):
+    """Update editable user profile details."""
+    profile.full_name = _clean_text(body.full_name)
+    profile.age = body.age
+    profile.date_of_birth = body.date_of_birth
+    profile.gender = _clean_text(body.gender)
+    profile.occupation = _clean_text(body.occupation)
+    await session.commit()
     return build_me(user, profile)

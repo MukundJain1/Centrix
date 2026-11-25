@@ -9,6 +9,9 @@ import '../onboarding/onboarding_screen.dart';
 import '../settings/app_settings.dart';
 import '../settings/settings_screen.dart';
 import '../summary/summary_screen.dart';
+import '../auth/data/auth_models.dart';
+import '../auth/data/auth_repository.dart';
+import '../profile/edit_profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final double dailyBudgetLimit;
@@ -36,9 +39,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
 
-  @override
+ @override
   void initState() {
     super.initState();
+    if (AuthRepository.instance.currentUser.value == null) {
+      AuthRepository.instance.me().then((_) {}, onError: (_) {});
+    }
     // Load saved preferences, then open the calendar in the preferred view.
     _settings.ensureLoaded().then((_) {
       if (!mounted) return;
@@ -93,11 +99,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void _logout() {
+ Future<void> _logout() async {
+    await AuthRepository.instance.logout();
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const AuthScreen()),
       (route) => false,
+    );
+  }
+
+  Future<void> _openEditProfile() async {
+    Navigator.pop(context); // close the profile sheet
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
     );
   }
 
@@ -122,7 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _openProfileModal() {
+ void _openProfileModal() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -148,32 +164,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                const CircleAvatar(
-                  radius: 40,
-                  backgroundColor: AppColors.inputSurface,
-                  child: Text(
-                    "MJ",
-                    style: TextStyle(
-                      color: AppColors.primaryAccent,
-                      fontSize: 24,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  "Mukund Jain",
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  "Phone: ******9876",
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                ValueListenableBuilder<MeModel?>(
+                  valueListenable: AuthRepository.instance.currentUser,
+                  builder: (context, user, _) {
+                    return Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: AppColors.inputSurface,
+                          child: Text(
+                            user?.initials ?? 'U',
+                            style: const TextStyle(
+                              color: AppColors.primaryAccent,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          user?.displayName ?? 'Complete your profile',
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          user != null ? 'Phone: ${user.maskedPhone}' : '',
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 32),
+                ListTile(
+                  leading: const Icon(Icons.person_outline_rounded,
+                      color: AppColors.primaryAccent),
+                  title: const Text("Edit Profile",
+                      style: TextStyle(color: AppColors.textPrimary)),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppColors.textMuted),
+                  onTap: _openEditProfile,
+                ),
                 ListTile(
                   leading: const Icon(Icons.edit_note_rounded,
                       color: AppColors.primaryAccent),
@@ -234,15 +272,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.primaryAccent, width: 2),
               ),
-              child: const CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.inputSurface,
-                child: Text(
-                  "MJ",
-                  style: TextStyle(
-                    color: AppColors.primaryAccent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+              child: ValueListenableBuilder<MeModel?>(
+                valueListenable: AuthRepository.instance.currentUser,
+                builder: (context, user, _) => CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppColors.inputSurface,
+                  child: Text(
+                    user?.initials ?? 'U',
+                    style: const TextStyle(
+                      color: AppColors.primaryAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),

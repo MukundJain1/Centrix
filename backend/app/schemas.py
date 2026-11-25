@@ -53,11 +53,24 @@ class MeOut(BaseModel):
     id: str
     phone: str
     country_iso: str
+    full_name: str | None = None
+    age: int | None = None
+    date_of_birth: date | None = None
+    gender: str | None = None
+    occupation: str | None = None
     currency: str
     monthly_surplus: float | None
     daily_limit: float | None
     payday: int | None
     onboarding: OnboardingOut
+
+
+class ProfileUpdateIn(BaseModel):
+    full_name: str | None = Field(default=None, max_length=80)
+    age: int | None = Field(default=None, ge=1, le=999)
+    date_of_birth: date | None = None
+    gender: str | None = Field(default=None, max_length=32)
+    occupation: str | None = Field(default=None, max_length=60)
 
 
 class AuthOut(BaseModel):

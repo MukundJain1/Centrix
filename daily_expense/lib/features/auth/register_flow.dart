@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/theme/colors.dart';
-import '../../core/utils/app_snackbar.dart';
 import 'auth_config.dart';
 import 'auth_storage.dart';
 import 'auth_validators.dart';
 import 'country.dart';
 import 'data/auth_models.dart';
 import 'data/auth_repository.dart';
+import 'widgets/auth_3d_snackbar.dart';
 import 'widgets/auth_button.dart';
 import 'widgets/auth_error_text.dart';
 import 'widgets/auth_label.dart';
@@ -36,6 +36,7 @@ class RegisterFlow extends StatefulWidget {
     required this.controller,
     required this.onStepChanged,
     required this.onRegistered,
+    this.onSwitchToLogin,
   });
 
   final RegisterFlowController controller;
@@ -45,6 +46,9 @@ class RegisterFlow extends StatefulWidget {
 
   /// Called with the new user's profile once the account exists.
   final ValueChanged<MeModel> onRegistered;
+
+  /// Automatically switches the parent AuthScreen toggle to Sign In.
+  final VoidCallback? onSwitchToLogin;
 
   @override
   State<RegisterFlow> createState() => _RegisterFlowState();
@@ -97,14 +101,37 @@ class _RegisterFlowState extends State<RegisterFlow> {
     widget.onStepChanged(step);
   }
 
-  /// Network / server problems -> snackbar. Everything else -> red text
-  /// under the field.
+  Future<void> _handlePhoneExists(String message) async {
+    showAuth3dSnackBar(
+      context,
+      message: message,
+      isError: true,
+      icon: Icons.person_search_rounded,
+    );
+    await AuthStorage.saveCountry(_country);
+    await AuthStorage.saveLastPhone(_phoneCtrl.text.trim());
+    if (!mounted) return;
+    widget.onSwitchToLogin?.call();
+  }
+
+  /// Network / server problems -> 3D red snackbar. Field errors -> inline text.
   void _showApiError(ApiException e) {
-    final serverTrouble = e.isNetwork || e.code == 'UNKNOWN' || (e.statusCode ?? 0) >= 500;
+    final serverTrouble =
+        e.isNetwork || e.code == 'UNKNOWN' || (e.statusCode ?? 0) >= 500;
     if (serverTrouble) {
-      AppSnackbar.error(context, e.message, icon: e.isNetwork ? Icons.wifi_off_rounded : null);
+      showAuth3dSnackBar(
+        context,
+        message: e.message,
+        isError: true,
+        icon: e.isNetwork ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
+      );
     } else {
       setState(() => _error = e.message);
+      showAuth3dSnackBar(
+        context,
+        message: e.message,
+        isError: true,
+      );
     }
   }
 
@@ -144,15 +171,30 @@ class _RegisterFlowState extends State<RegisterFlow> {
     });
 
     try {
-      await _auth.sendOtp(_country, _phoneCtrl.text.trim());
+      final phone = _phoneCtrl.text.trim();
+      await _auth.sendOtp(_country, phone);
       if (!mounted) return;
+      showAuth3dSnackBar(
+        context,
+        message: 'OTP sent to ${_country.dialCode} $phone',
+        isError: false,
+        icon: Icons.mark_email_read_rounded,
+      );
       _goTo(RegisterStep.otp);
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (e.code == 'PHONE_EXISTS') {
+        await _handlePhoneExists(e.message);
+        return;
+      }
       _showApiError(e);
     } catch (_) {
       if (!mounted) return;
-      AppSnackbar.error(context, 'Something went wrong. Please try again.');
+      showAuth3dSnackBar(
+        context,
+        message: 'Something went wrong. Please try again.',
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -167,28 +209,62 @@ class _RegisterFlowState extends State<RegisterFlow> {
       // The user may have pressed back while the code was being checked.
       if (!mounted || _step != RegisterStep.otp) return null;
 
+      showAuth3dSnackBar(
+        context,
+        message: 'Mobile number verified successfully!',
+        isError: false,
+        icon: Icons.verified_rounded,
+      );
       _registrationToken = token;
       _goTo(RegisterStep.setPin);
       return null;
     } on ApiException catch (e) {
       final left = e.attemptsLeft;
-      if (e.code == 'WRONG_OTP' && left != null) {
-        return '${e.message} $left ${left == 1 ? 'attempt' : 'attempts'} left.';
+      final msg = (e.code == 'WRONG_OTP' && left != null)
+          ? '${e.message} $left ${left == 1 ? 'attempt' : 'attempts'} left.'
+          : e.message;
+      if (mounted) {
+        showAuth3dSnackBar(
+          context,
+          message: msg,
+          isError: true,
+          icon: Icons.gpp_bad_rounded,
+        );
       }
-      return e.message;
+      return msg;
     } catch (_) {
-      return 'Could not verify the code. Please try again.';
+      const msg = 'Could not verify the code. Please try again.';
+      if (mounted) {
+        showAuth3dSnackBar(context, message: msg, isError: true);
+      }
+      return msg;
     }
   }
 
   Future<String?> _resendOtp() async {
     try {
-      await _auth.sendOtp(_country, _phoneCtrl.text.trim());
+      final phone = _phoneCtrl.text.trim();
+      await _auth.sendOtp(_country, phone);
+      if (mounted) {
+        showAuth3dSnackBar(
+          context,
+          message: 'New OTP sent to ${_country.dialCode} $phone',
+          isError: false,
+          icon: Icons.mark_email_read_rounded,
+        );
+      }
       return null;
     } on ApiException catch (e) {
+      if (mounted) {
+        showAuth3dSnackBar(context, message: e.message, isError: true);
+      }
       return e.message;
     } catch (_) {
-      return 'Could not resend the code. Please try again.';
+      const msg = 'Could not resend the code. Please try again.';
+      if (mounted) {
+        showAuth3dSnackBar(context, message: msg, isError: true);
+      }
+      return msg;
     }
   }
 
@@ -210,7 +286,11 @@ class _RegisterFlowState extends State<RegisterFlow> {
     final token = _registrationToken;
     if (token == null) {
       _goTo(RegisterStep.phone);
-      AppSnackbar.warning(context, 'Please verify your number again.');
+      showAuth3dSnackBar(
+        context,
+        message: 'Please verify your number again.',
+        isError: true,
+      );
       return;
     }
 
@@ -230,16 +310,23 @@ class _RegisterFlowState extends State<RegisterFlow> {
       if (!mounted) return;
       if (e.code == 'INVALID_REGISTRATION') {
         _goTo(RegisterStep.phone);
-        AppSnackbar.warning(context, 'Please verify your number again.');
+        showAuth3dSnackBar(
+          context,
+          message: 'Please verify your number again.',
+          isError: true,
+        );
       } else if (e.code == 'PHONE_EXISTS') {
-        _goTo(RegisterStep.phone);
-        setState(() => _error = e.message);
+        await _handlePhoneExists(e.message);
       } else {
         _showApiError(e); // includes WEAK_PIN
       }
     } catch (_) {
       if (!mounted) return;
-      AppSnackbar.error(context, 'Something went wrong. Please try again.');
+      showAuth3dSnackBar(
+        context,
+        message: 'Something went wrong. Please try again.',
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }

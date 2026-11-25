@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'cycle_setup_screen.dart';
 import 'data/baseline_repository.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../settings/app_settings.dart';
@@ -16,8 +18,8 @@ class BudgetItem {
   final TextEditingController amountController;
 
   BudgetItem({String name = '', String amount = ''})
-      : nameController = TextEditingController(text: name),
-        amountController = TextEditingController(text: amount);
+    : nameController = TextEditingController(text: name),
+      amountController = TextEditingController(text: amount);
 
   void dispose() {
     nameController.dispose();
@@ -32,8 +34,8 @@ class BudgetCategory {
     this.isCustom = false,
     List<BudgetItem>? items,
     this.suggestions = const [],
-  })  : titleController = TextEditingController(text: title),
-        items = items ?? [];
+  }) : titleController = TextEditingController(text: title),
+       items = items ?? [];
 
   /// Holds the title. Only custom categories let the user edit it.
   final TextEditingController titleController;
@@ -88,6 +90,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// What the form looked like when it opened. Used to detect unsaved edits.
   String _initialJson = '';
 
+  String? _loadError;
+
   static const Map<String, List<String>> _suggestionMap = {
     'Monthly Income': ["Salary", "Freelance", "Business", "Rental Income"],
     'Housing': ["Rent", "Maintenance", "Property Tax"],
@@ -107,28 +111,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _suggestionMap[title] ?? const [];
 
   List<BudgetCategory> _defaultCategories() => [
-        BudgetCategory(
-          title: "Monthly Income",
-          isIncome: true,
-          suggestions: _suggestionsFor("Monthly Income"),
-        ),
-        BudgetCategory(
-          title: "Housing",
-          suggestions: _suggestionsFor("Housing"),
-        ),
-        BudgetCategory(
-          title: "EMIs & Loans",
-          suggestions: _suggestionsFor("EMIs & Loans"),
-        ),
-        BudgetCategory(
-          title: "Utilities & Subscriptions",
-          suggestions: _suggestionsFor("Utilities & Subscriptions"),
-        ),
-        BudgetCategory(
-          title: "Fees & Others",
-          suggestions: _suggestionsFor("Fees & Others"),
-        ),
-      ];
+    BudgetCategory(
+      title: "Monthly Income",
+      isIncome: true,
+      suggestions: _suggestionsFor("Monthly Income"),
+    ),
+    BudgetCategory(title: "Housing", suggestions: _suggestionsFor("Housing")),
+    BudgetCategory(
+      title: "EMIs & Loans",
+      suggestions: _suggestionsFor("EMIs & Loans"),
+    ),
+    BudgetCategory(
+      title: "Utilities & Subscriptions",
+      suggestions: _suggestionsFor("Utilities & Subscriptions"),
+    ),
+    BudgetCategory(
+      title: "Fees & Others",
+      suggestions: _suggestionsFor("Fees & Others"),
+    ),
+  ];
 
   @override
   void initState() {
@@ -177,30 +178,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   bool get _isDirty =>
-      widget.isEditing && !_loadingSaved && _snapshot().encode() != _initialJson;
-
-  Future<void> _loadSaved() async {
-    final saved = await BudgetStorage.loadBaseline();
-    if (!mounted) return;
-
-    setState(() {
-      if (saved != null && saved.categories.isNotEmpty) {
-        final old = _categories;
-        _categories = saved.categories.map(_fromSnapshot).toList();
-        if (_currencies.contains(saved.currency)) {
-          _selectedCurrency = saved.currency;
-        }
-        // Dispose the placeholder rows once they are out of the tree.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          for (final c in old) {
-            c.dispose();
-          }
-        });
-      }
-      _loadingSaved = false;
-      _initialJson = _snapshot().encode();
-    });
-  }
+      widget.isEditing &&
+      !_loadingSaved &&
+      _snapshot().encode() != _initialJson;
 
   BudgetCategory _fromSnapshot(CategorySnapshot c) {
     final category = BudgetCategory(
@@ -231,13 +211,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep editing',
-                style: TextStyle(color: AppColors.primaryAccent)),
+            child: const Text(
+              'Keep editing',
+              style: TextStyle(color: AppColors.primaryAccent),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Discard',
-                style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Discard',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -298,11 +282,60 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
   }
 
+  Future<void> _loadSaved() async {
+    setState(() {
+      _loadingSaved = true;
+      _loadError = null;
+    });
+
+    try {
+      final saved = await BaselineRepository.instance.load();
+      if (!mounted) return;
+
+      if (saved != null) {
+        // Keep local cache updated for future offline support.
+        await BudgetStorage.saveBaseline(saved);
+        if (!mounted) return;
+      }
+
+      setState(() {
+        if (saved != null && saved.categories.isNotEmpty) {
+          final old = _categories;
+          _categories = saved.categories.map(_fromSnapshot).toList();
+          if (_currencies.contains(saved.currency)) {
+            _selectedCurrency = saved.currency;
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            for (final c in old) {
+              c.dispose();
+            }
+          });
+        }
+        _loadingSaved = false;
+        _initialJson = _snapshot().encode();
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingSaved = false;
+        _loadError = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadingSaved = false;
+        _loadError = 'Unable to fetch your saved baseline. Check your connection and try again.';
+      });
+    }
+  }
+
   Future<void> _saveAndContinue() async {
     FocusScope.of(context).unfocus();
 
     if (_totalIncome <= 0) {
-      setState(() => _saveError = 'Add at least one income amount to continue.');
+      setState(
+        () => _saveError = 'Add at least one income amount to continue.',
+      );
       return;
     }
     if (_surplus <= 0) {
@@ -318,34 +351,124 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
 
     final dailyLimit = _dailyBudget;
+    final snapshot = _snapshot();
 
-    // TODO(backend): send income, expenses and currency to the server.
+    final BaselineResult result;
     try {
-      await BaselineRepository.instance.save(_snapshot());
+      result = await BaselineRepository.instance.save(snapshot);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
       AppSnackbar.error(context, e.message);
       return;
     }
+
+    final effectiveDailyLimit = result.dailyLimit ?? dailyLimit;
+
+    await BudgetStorage.save(
+      dailyLimit: effectiveDailyLimit,
+      currency: _selectedCurrency,
+      baseline: snapshot,
+      monthlySurplus: result.monthlySurplus ?? _surplus,
+    );
     AppSettings.instance.setCurrency(_selectedCurrency);
 
     if (!mounted) return;
 
     if (widget.isEditing) {
       // Back to the dashboard, which picks up the new daily budget.
-      Navigator.pop(context, dailyLimit);
+      Navigator.pop(context, effectiveDailyLimit);
     } else {
-      Navigator.pushAndRemoveUntil(
+      Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => DashboardScreen(dailyBudgetLimit: dailyLimit),
+          builder: (_) => CycleSetupScreen(
+            monthlySurplus: result.monthlySurplus ?? _surplus,
+            currency: _selectedCurrency,
+          ),
         ),
-        (route) => false,
       );
     }
   }
 
+  Widget _buildLoadErrorState(double hPad) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: hPad),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.inputSurface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.cloud_off_rounded,
+                    color: Colors.redAccent,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "Couldn't load baseline",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _loadError!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _loadSaved,
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    label: const Text(
+                      'Try again',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryAccent,
+                      foregroundColor: AppColors.background,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
   // ------------------------------------------------------------------- UI
 
   @override
@@ -398,10 +521,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     }
                   },
                   items: _currencies
-                      .map((c) => DropdownMenuItem<String>(
-                            value: c,
-                            child: Text(c),
-                          ))
+                      .map(
+                        (c) =>
+                            DropdownMenuItem<String>(value: c, child: Text(c)),
+                      )
                       .toList(),
                 ),
               ),
@@ -414,6 +537,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   color: AppColors.primaryAccent,
                 ),
               )
+            : _loadError != null
+            ? _buildLoadErrorState(hPad)
             : SafeArea(
                 bottom: false, // the summary bar handles the bottom inset
                 child: Column(
@@ -477,7 +602,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       dailyBudget: _dailyBudget,
                       surplus: _surplus,
                       currency: _selectedCurrency,
-                      message: _saveError ??
+                      message:
+                          _saveError ??
                           (_surplus < 0
                               ? 'Your expenses are higher than your income.'
                               : null),
@@ -626,8 +752,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Row(
                 children: [
-                  const Icon(Icons.add,
-                      color: AppColors.primaryAccent, size: 20),
+                  const Icon(
+                    Icons.add,
+                    color: AppColors.primaryAccent,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -703,8 +832,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         keyboardType: isNumber
             ? const TextInputType.numberWithOptions(decimal: true)
             : TextInputType.text,
-        textCapitalization:
-            isNumber ? TextCapitalization.none : TextCapitalization.words,
+        textCapitalization: isNumber
+            ? TextCapitalization.none
+            : TextCapitalization.words,
         inputFormatters: isNumber
             ? [
                 // Digits with at most 2 decimals, up to 12 characters.
@@ -720,8 +850,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           border: InputBorder.none,
           hintText: hint,
           hintStyle: const TextStyle(color: AppColors.textMuted),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 12,
+          ),
           prefixText: isNumber ? "$_selectedCurrency " : null,
           prefixStyle: const TextStyle(
             color: AppColors.primaryAccent,

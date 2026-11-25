@@ -151,6 +151,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             controller: _registerController,
                             onStepChanged: (s) => setState(() => _step = s),
                             onRegistered: _routeAfterAuth,
+                            onSwitchToLogin: () => _setMode(true),
                           ),
                   ),
                 ],
