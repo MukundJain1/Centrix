@@ -13,6 +13,7 @@ class MeModel {
     required this.monthlySurplus,
     required this.dailyLimit,
     required this.payday,
+    required this.createdAt,
     required this.baselineDone,
     required this.cycleDone,
   });
@@ -29,6 +30,7 @@ class MeModel {
   final double? monthlySurplus;
   final double? dailyLimit;
   final int? payday;
+  final DateTime createdAt;
 
   /// Setup steps. Decide where to send the user after sign in:
   /// baseline not done -> Financial Baseline, then cycle, then Dashboard.
@@ -58,6 +60,7 @@ class MeModel {
   factory MeModel.fromJson(Map<String, dynamic> json) {
     final onboarding = (json['onboarding'] as Map?) ?? const {};
     final rawDob = json['date_of_birth'] as String?;
+    final rawCreated = json['created_at'] as String?;
     return MeModel(
       id: json['id'] as String,
       phone: json['phone'] as String,
@@ -73,6 +76,9 @@ class MeModel {
       monthlySurplus: (json['monthly_surplus'] as num?)?.toDouble(),
       dailyLimit: (json['daily_limit'] as num?)?.toDouble(),
       payday: (json['payday'] as num?)?.toInt(),
+      createdAt: rawCreated != null
+          ? (DateTime.tryParse(rawCreated)?.toLocal() ?? DateTime.now())
+          : DateTime.now(),
       baselineDone: onboarding['baseline_done'] == true,
       cycleDone: onboarding['cycle_done'] == true,
     );

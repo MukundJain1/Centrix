@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../vault/vault_screen.dart';
 import '../../core/theme/colors.dart';
 import '../auth/auth_screen.dart';
 import '../expenses/expense.dart';
@@ -25,6 +26,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _settings = AppSettings.instance;
   final _repo = ExpenseRepository.instance;
+  bool _revealBalance = false;
 
   /// Starts as the value from onboarding; changes after Edit Baseline.
   late double _dailyLimit = widget.dailyBudgetLimit;
@@ -35,18 +37,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   CalendarFormat _calendarFormat = CalendarFormat.week;
 
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
- @override
+  @override
   void initState() {
     super.initState();
     if (AuthRepository.instance.currentUser.value == null) {
       AuthRepository.instance.me().then((_) {}, onError: (_) {});
     }
-    // Load saved preferences, then open the calendar in the preferred view.
-    _settings.ensureLoaded().then((_) {
+    _settings.ensureLoaded().then((_) async {
+      await _settings.syncFromServer();
       if (!mounted) return;
       setState(() {
         _calendarFormat = _settings.defaultCalendarView == CalendarView.month
@@ -99,7 +111,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
- Future<void> _logout() async {
+  void _openVault({bool fromModal = false}) {
+    if (fromModal) Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => VaultScreen(dailyLimit: _dailyLimit)),
+    );
+  }
+
+  Future<void> _logout() async {
     await AuthRepository.instance.logout();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
@@ -138,7 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
- void _openProfileModal() {
+  void _openProfileModal() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -204,37 +224,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 32),
                 ListTile(
-                  leading: const Icon(Icons.person_outline_rounded,
-                      color: AppColors.primaryAccent),
-                  title: const Text("Edit Profile",
-                      style: TextStyle(color: AppColors.textPrimary)),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppColors.textMuted),
+                  leading: const Icon(
+                    Icons.savings_outlined,
+                    color: AppColors.primaryAccent,
+                  ),
+                  title: const Text(
+                    "Savings Vault",
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textMuted,
+                  ),
+                  onTap: () => _openVault(fromModal: true),
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.person_outline_rounded,
+                    color: AppColors.primaryAccent,
+                  ),
+                  title: const Text(
+                    "Edit Profile",
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textMuted,
+                  ),
                   onTap: _openEditProfile,
                 ),
                 ListTile(
-                  leading: const Icon(Icons.edit_note_rounded,
-                      color: AppColors.primaryAccent),
-                  title: const Text("Edit Baseline",
-                      style: TextStyle(color: AppColors.textPrimary)),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppColors.textMuted),
+                  leading: const Icon(
+                    Icons.edit_note_rounded,
+                    color: AppColors.primaryAccent,
+                  ),
+                  title: const Text(
+                    "Edit Baseline",
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textMuted,
+                  ),
                   onTap: _openEditBaseline,
                 ),
                 ListTile(
-                  leading: const Icon(Icons.settings_rounded,
-                      color: AppColors.primaryAccent),
-                  title: const Text("App Settings",
-                      style: TextStyle(color: AppColors.textPrimary)),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppColors.textMuted),
+                  leading: const Icon(
+                    Icons.settings_rounded,
+                    color: AppColors.primaryAccent,
+                  ),
+                  title: const Text(
+                    "App Settings",
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textMuted,
+                  ),
                   onTap: _openSettings,
                 ),
                 ListTile(
-                  leading:
-                      const Icon(Icons.logout_rounded, color: Colors.redAccent),
-                  title: const Text("Logout",
-                      style: TextStyle(color: Colors.redAccent)),
+                  leading: const Icon(
+                    Icons.logout_rounded,
+                    color: Colors.redAccent,
+                  ),
+                  title: const Text(
+                    "Logout",
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
                   onTap: _logout,
                 ),
                 const SizedBox(height: 20),
@@ -263,6 +320,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Savings Vault',
+            onPressed: _openVault,
+            icon: const Icon(
+              Icons.savings_outlined,
+              color: AppColors.primaryAccent,
+            ),
+          ),
           GestureDetector(
             onTap: _openProfileModal,
             child: Container(
@@ -294,10 +359,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // IndexedStack keeps each tab's state (calendar, summary filters).
       body: IndexedStack(
         index: _currentIndex,
-        children: [
-          _buildDashboardTab(),
-          const SummaryScreen(),
-        ],
+        children: [_buildDashboardTab(), const SummaryScreen()],
       ),
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: AppColors.inputSurface,
@@ -307,9 +369,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_rounded), label: "Dashboard"),
+            icon: Icon(Icons.dashboard_rounded),
+            label: "Dashboard",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.pie_chart_rounded), label: "Summary"),
+            icon: Icon(Icons.pie_chart_rounded),
+            label: "Summary",
+          ),
         ],
       ),
     );
@@ -387,16 +453,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // --------------------------------------------------------- budget card
 
+  // --------------------------------------------------------- budget card
+
   Widget _buildBudgetCard(DateTime day, double spent) {
     final limit = _dailyLimit;
     final remaining = limit - spent;
     final shown = remaining < 0 ? 0.0 : remaining;
-    final progress =
-        limit > 0 ? (shown / limit).clamp(0.0, 1.0).toDouble() : 0.0;
+    final progress = limit > 0
+        ? (shown / limit).clamp(0.0, 1.0).toDouble()
+        : 0.0;
     final usedPct = limit > 0 ? spent / limit * 100 : 0.0;
 
     final over = spent > limit;
-    final warn = _settings.budgetAlerts &&
+    final warn =
+        _settings.budgetAlerts &&
         !over &&
         spent > 0 &&
         usedPct >= _settings.alertThreshold;
@@ -404,8 +474,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final barColor = over || progress <= 0
         ? Colors.redAccent
         : warn
-            ? Colors.amber
-            : AppColors.primaryAccent;
+        ? Colors.amber
+        : AppColors.primaryAccent;
 
     return Container(
       width: double.infinity,
@@ -418,15 +488,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _isToday(day) ? "Remaining Today" : "Remaining on ${_dayLabel(day)}",
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _isToday(day)
+                    ? "Remaining Today"
+                    : "Remaining on ${_dayLabel(day)}",
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 14,
+                ),
+              ),
+              if (_settings.hideBalances)
+                GestureDetector(
+                  onTap: () => setState(() => _revealBalance = !_revealBalance),
+                  child: Icon(
+                    _revealBalance
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    size: 18,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
-              _settings.money(shown),
+              _settings.maskedMoney(shown, reveal: _revealBalance),
               style: TextStyle(
                 color: over ? Colors.redAccent : AppColors.primaryAccent,
                 fontSize: 36,
@@ -436,7 +527,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Spent ${_settings.money(spent)} of ${_settings.money(limit)}',
+            'Spent ${_settings.maskedMoney(spent, reveal: _revealBalance)} of ${_settings.maskedMoney(limit, reveal: _revealBalance)}',
             style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
           ),
           const SizedBox(height: 16),
@@ -468,7 +559,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Expanded(
                           child: Text(
                             over
-                                ? 'Over budget by ${_settings.money(spent - limit)}'
+                                ? 'Over budget by ${_settings.maskedMoney(spent - limit, reveal: _revealBalance)}'
                                 : "You've used ${usedPct.round()}% of this day's budget",
                             style: TextStyle(
                               color: over ? Colors.redAccent : Colors.amber,
@@ -521,10 +612,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
-            leftChevronIcon:
-                Icon(Icons.chevron_left, color: AppColors.textMuted),
-            rightChevronIcon:
-                Icon(Icons.chevron_right, color: AppColors.textMuted),
+            leftChevronIcon: Icon(
+              Icons.chevron_left,
+              color: AppColors.textMuted,
+            ),
+            rightChevronIcon: Icon(
+              Icons.chevron_right,
+              color: AppColors.textMuted,
+            ),
           ),
           daysOfWeekStyle: const DaysOfWeekStyle(
             weekdayStyle: TextStyle(color: AppColors.textMuted),
@@ -601,8 +696,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 customBorder: const StadiumBorder(),
                 onTap: _toggleCalendar,
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -643,8 +740,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       padding: EdgeInsets.symmetric(horizontal: 32, vertical: 32),
       child: Column(
         children: [
-          Icon(Icons.self_improvement_rounded,
-              size: 48, color: AppColors.textMuted),
+          Icon(
+            Icons.self_improvement_rounded,
+            size: 48,
+            color: AppColors.textMuted,
+          ),
           SizedBox(height: 12),
           Text(
             "No spends yet",

@@ -23,12 +23,12 @@ def build_me(user: User, profile: UserProfile) -> MeOut:
         monthly_surplus=float(profile.monthly_surplus) if profile.monthly_surplus is not None else None,
         daily_limit=float(profile.daily_limit) if profile.daily_limit is not None else None,
         payday=profile.payday,
+        created_at=user.created_at,
         onboarding=OnboardingOut(
             baseline_done=profile.baseline_completed_at is not None,
             cycle_done=profile.cycle_completed_at is not None,
         ),
     )
-
 
 async def issue_tokens(
     session: AsyncSession, user: User, profile: UserProfile, device_label: str | None

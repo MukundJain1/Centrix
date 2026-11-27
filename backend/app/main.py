@@ -8,7 +8,7 @@ from .config import settings
 from .db import Base, engine
 from .errors import ApiError, api_error_handler, validation_error_handler
 from .routers import auth, baseline
-
+from .routers import auth, baseline, settings as settings_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -29,7 +29,7 @@ app.add_exception_handler(RequestValidationError, validation_error_handler)
 
 app.include_router(auth.router)
 app.include_router(baseline.router)
-
+app.include_router(settings_router.router)
 
 @app.get("/health", tags=["meta"])
 async def health():

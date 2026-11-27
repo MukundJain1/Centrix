@@ -133,4 +133,14 @@ class AuthRepository {
     currentUser.value = user;
     return user;
   }
+
+  /// Verifies the signed-in user's account PIN against POST /v1/auth/verify-pin.
+  Future<bool> verifyPin(String pin) async {
+    final body = await _api.send(
+      'POST',
+      '/v1/auth/verify-pin',
+      data: {'pin': pin},
+    ) as Map<String, dynamic>;
+    return body['verified'] == true;
+  }
 }

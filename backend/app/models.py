@@ -41,6 +41,8 @@ class UserProfile(Base):
     __table_args__ = (
         CheckConstraint("payday between 1 and 31", name="payday_range"),
         CheckConstraint("age between 1 and 999", name="age_range"),
+        CheckConstraint("alert_threshold between 50 and 100", name="alert_threshold_range"),
+        CheckConstraint("reminder_minutes between 0 and 1439", name="reminder_minutes_range"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -55,11 +57,19 @@ class UserProfile(Base):
     monthly_surplus: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     daily_limit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     payday: Mapped[int | None] = mapped_column(SmallInteger)
+    grouping: Mapped[str] = mapped_column(String(16), default="auto")
+    week_start: Mapped[str] = mapped_column(String(12), default="monday")
+    default_calendar_view: Mapped[str] = mapped_column(String(10), default="week")
+    budget_alerts: Mapped[bool] = mapped_column(Boolean, default=True)
+    alert_threshold: Mapped[int] = mapped_column(SmallInteger, default=80)
+    daily_reminder: Mapped[bool] = mapped_column(Boolean, default=False)
+    reminder_minutes: Mapped[int] = mapped_column(SmallInteger, default=1260)
+    app_lock: Mapped[bool] = mapped_column(Boolean, default=False)
+    hide_balances: Mapped[bool] = mapped_column(Boolean, default=False)
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cycle_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
 
 class OtpChallenge(Base):
     __tablename__ = "otp_challenges"

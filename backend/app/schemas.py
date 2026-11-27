@@ -1,8 +1,8 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
 
 # ------------------------------------------------------------------- auth
 
@@ -62,7 +62,42 @@ class MeOut(BaseModel):
     monthly_surplus: float | None
     daily_limit: float | None
     payday: int | None
+    created_at: datetime
     onboarding: OnboardingOut
+
+
+class PinVerifyIn(BaseModel):
+    pin: str = Field(pattern=r"^\d{4,6}$")
+
+
+class PinVerifyOut(BaseModel):
+    verified: bool = True
+
+
+class SettingsOut(BaseModel):
+    grouping: Literal["auto", "indian", "international"]
+    week_start: Literal["monday", "sunday", "saturday"]
+    default_calendar_view: Literal["week", "month"]
+    budget_alerts: bool
+    alert_threshold: int
+    daily_reminder: bool
+    reminder_minutes: int
+    app_lock: bool
+    hide_balances: bool
+    payday: int | None
+
+
+class SettingsUpdateIn(BaseModel):
+    grouping: Literal["auto", "indian", "international"] = "auto"
+    week_start: Literal["monday", "sunday", "saturday"] = "monday"
+    default_calendar_view: Literal["week", "month"] = "week"
+    budget_alerts: bool = True
+    alert_threshold: int = Field(default=80, ge=50, le=100)
+    daily_reminder: bool = False
+    reminder_minutes: int = Field(default=1260, ge=0, le=1439)
+    app_lock: bool = False
+    hide_balances: bool = False
+    payday: int | None = Field(default=None, ge=1, le=31)
 
 
 class ProfileUpdateIn(BaseModel):

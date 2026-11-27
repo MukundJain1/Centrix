@@ -41,6 +41,7 @@ from ..security import (
 )
 from ..services import build_me, issue_tokens
 from ..timeutil import as_utc, utcnow
+from ..schemas import (PinVerifyIn, PinVerifyOut)
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -307,3 +308,42 @@ async def update_me(
     profile.occupation = _clean_text(body.occupation)
     await session.commit()
     return build_me(user, profile)
+
+@router.post("/verify-pin", response_model=PinVerifyOut)
+async def check_pin(
+    body: PinVerifyIn,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Verify the signed-in user's PIN before sensitive actions."""
+    now = utcnow()
+    if user.locked_until is not None and as_utc(user.locked_until) > now:
+        retry = _seconds_left(user.locked_until)
+        raise ApiError(
+            423,
+            "PIN_LOCKED",
+            f"Too many wrong attempts. Try again in {math.ceil(retry / 60)} min.",
+            retry_after=retry,
+        )
+
+    ok = await run_in_threadpool(verify_pin, body.pin, str(user.id), user.pin_hash)
+    if not ok:
+        user.failed_pin_attempts += 1
+        if user.failed_pin_attempts >= settings.pin_max_attempts:
+            user.failed_pin_attempts = 0
+            user.locked_until = now + timedelta(minutes=settings.pin_lock_minutes)
+            await session.commit()
+            raise ApiError(
+                423,
+                "PIN_LOCKED",
+                f"Too many wrong attempts. Try again in {settings.pin_lock_minutes} min.",
+                retry_after=settings.pin_lock_minutes * 60,
+            )
+        left = settings.pin_max_attempts - user.failed_pin_attempts
+        await session.commit()
+        raise ApiError(401, "WRONG_PIN", "Wrong PIN.", attempts_left=left)
+
+    user.failed_pin_attempts = 0
+    user.locked_until = None
+    await session.commit()
+    return PinVerifyOut(verified=True)
